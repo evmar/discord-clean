@@ -193,7 +193,6 @@ func run() error {
 		if err := sess.cleanChannel(ch); err != nil {
 			return err
 		}
-		break
 	}
 
 	return nil
