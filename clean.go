@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,8 +41,6 @@ type Session struct {
 	deleteBefore time.Time
 	// Delete entries from these users.
 	deleteUsers map[string]bool
-	// Time our last RPC was sent; used to self rate limit.
-	lastRPC time.Time
 }
 
 func loadState() (*State, error) {
@@ -77,16 +77,6 @@ func (s *State) save() error {
 	return nil
 }
 
-func (s *Session) rpcWait() {
-	delta := time.Since(s.lastRPC)
-	if delta < 1*time.Second {
-		delta = (1 * time.Second) - delta
-		log.Println("sleeping", delta)
-		time.Sleep(delta)
-	}
-	s.lastRPC = time.Now()
-}
-
 func (s *Session) getChannels() error {
 	if s.state.Guild != "" && s.state.Channels != nil {
 		return nil
@@ -119,17 +109,42 @@ func (s *Session) getChannels() error {
 	return s.state.save()
 }
 
+func topUsers(msgs []*discordgo.Message) string {
+	hist := map[string]int{}
+	for _, msg := range msgs {
+		hist[msg.Author.String()] += 1
+	}
+
+	type kv struct {
+		user  string
+		count int
+	}
+	histArr := []kv{}
+	for user, count := range hist {
+		histArr = append(histArr, kv{user: user, count: count})
+	}
+
+	sort.Slice(histArr, func(i, j int) bool { return histArr[i].count > histArr[j].count })
+
+	out := ""
+	for i, kv := range histArr {
+		out += fmt.Sprintf(" %s:%d", kv.user, kv.count)
+		if i > 5 {
+			break
+		}
+	}
+	return out
+}
+
 func (s *Session) cleanChannel(ch *Channel) error {
 	if ch.Clean {
 		return nil
 	}
 
 	log.Printf("cleaning #%s", ch.Name)
-	var lastStamp string
+	var lastStamp time.Time
 
 	for {
-		s.rpcWait()
-		log.Println("getting messages before", ch.LastProcessed, lastStamp)
 		msgs, err := s.discord.ChannelMessages(ch.ID, 100, ch.LastProcessed, "", "")
 		if err != nil {
 			return err
@@ -137,17 +152,26 @@ func (s *Session) cleanChannel(ch *Channel) error {
 		if len(msgs) == 0 {
 			break
 		}
+
+		top := topUsers(msgs)
+		log.Println("top users:", top)
+
 		for _, msg := range msgs {
 			author := msg.Author.String()
 			if msg.Timestamp.Before(s.deleteBefore) && s.deleteUsers[author] {
-				s.rpcWait()
 				log.Println("deleting", author, msg.ID, msg.Timestamp.String())
 				if err := s.discord.ChannelMessageDelete(ch.ID, msg.ID); err != nil {
 					return err
 				}
 			}
 			ch.LastProcessed = msg.ID
-			lastStamp = msg.Timestamp.String()
+			lastStamp = msg.Timestamp
+		}
+
+		// Hack: don't traverse before this arbitrary stopping point, just so we
+		// don't run through the history of the world each time.
+		if lastStamp.Before(time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)) {
+			break
 		}
 
 		if err := s.state.save(); err != nil {
@@ -179,7 +203,6 @@ func run() error {
 		state:        state,
 		deleteBefore: time.Now().AddDate(0, -1, 0),
 		deleteUsers:  users,
-		lastRPC:      time.Now().AddDate(-1, 0, 0),
 	}
 
 	if err := sess.getChannels(); err != nil {
