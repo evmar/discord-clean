@@ -82,18 +82,19 @@ func (s *Session) getChannels() error {
 		return nil
 	}
 
-	guilds, err := s.discord.UserGuilds(100, "", "")
+	guilds, err := s.discord.UserGuilds(100, "", "", false)
 	if err != nil {
 		return err
 	}
-	var qguild *discordgo.UserGuild
-	for _, guild := range guilds {
-		log.Print("guild:", guild)
-		qguild = guild
+	if len(guilds) != 1 {
+		return fmt.Errorf("expected exactly one guild, got %d", len(guilds))
 	}
-	s.state.Guild = qguild.ID
 
-	chans, err := s.discord.GuildChannels(qguild.ID)
+	guild := guilds[0]
+	log.Print("guild:", guild)
+	s.state.Guild = guild.ID
+
+	chans, err := s.discord.GuildChannels(guild.ID)
 	if err != nil {
 		return err
 	}
