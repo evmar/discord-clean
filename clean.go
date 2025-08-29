@@ -199,6 +199,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	discord.LogLevel = discordgo.LogInformational
+	//discord.Debug = true
 	sess := &Session{
 		discord:      discord,
 		state:        state,
