@@ -15,7 +15,7 @@ import (
 
 var (
 	flagToken = flag.String("token", "", "API key")
-	flagUsers = flag.String("users", "", "users to delete (in the format 'foo#1234,bar#213')")
+	flagUsers = flag.String("users", "", "users to delete")
 )
 
 type Channel struct {
@@ -159,7 +159,7 @@ func (s *Session) cleanChannel(ch *Channel) error {
 
 		for _, msg := range msgs {
 			author := msg.Author.String()
-			if msg.Timestamp.Before(s.deleteBefore) && s.deleteUsers[author] {
+			if msg.Timestamp.Before(s.deleteBefore) && (s.deleteUsers == nil || s.deleteUsers[author]) {
 				log.Println("deleting", author, msg.ID, msg.Timestamp.String())
 				if err := s.discord.ChannelMessageDelete(ch.ID, msg.ID); err != nil {
 					return err
@@ -186,9 +186,12 @@ func (s *Session) cleanChannel(ch *Channel) error {
 func run() error {
 	flag.Parse()
 
-	users := map[string]bool{}
-	for _, user := range strings.Split(*flagUsers, ",") {
-		users[user] = true
+	var users map[string]bool
+	if *flagUsers != "" {
+		users = map[string]bool{}
+		for _, user := range strings.Split(*flagUsers, ",") {
+			users[user] = true
+		}
 	}
 
 	state, err := loadState()
