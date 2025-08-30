@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -39,8 +38,6 @@ type Session struct {
 	state   *State
 	// Delete entries before this timestamp.
 	deleteBefore time.Time
-	// Delete entries from these users.
-	deleteUsers map[string]bool
 }
 
 func loadState() (*State, error) {
@@ -159,7 +156,7 @@ func (s *Session) cleanChannel(ch *Channel) error {
 
 		for _, msg := range msgs {
 			author := msg.Author.String()
-			if msg.Timestamp.Before(s.deleteBefore) && (s.deleteUsers == nil || s.deleteUsers[author]) {
+			if msg.Timestamp.Before(s.deleteBefore) {
 				log.Println("deleting", author, msg.ID, msg.Timestamp.String())
 				if err := s.discord.ChannelMessageDelete(ch.ID, msg.ID); err != nil {
 					return err
@@ -186,14 +183,6 @@ func (s *Session) cleanChannel(ch *Channel) error {
 func run() error {
 	flag.Parse()
 
-	var users map[string]bool
-	if *flagUsers != "" {
-		users = map[string]bool{}
-		for _, user := range strings.Split(*flagUsers, ",") {
-			users[user] = true
-		}
-	}
-
 	state, err := loadState()
 	if err != nil {
 		return err
@@ -208,7 +197,6 @@ func run() error {
 		discord:      discord,
 		state:        state,
 		deleteBefore: time.Now().AddDate(0, -1, 0),
-		deleteUsers:  users,
 	}
 
 	if err := sess.getChannels(); err != nil {

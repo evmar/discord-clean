@@ -40,5 +40,5 @@ permissions checkboxes on the Bot page.
 
 ```
 $ go build .
-$ ./discord-clean -token="$TOKEN" -users="evmar#1234,jon#4231"
+$ ./discord-clean -token="$TOKEN"
 ```
